@@ -1,9 +1,16 @@
 package com.sessions.controller;
 
+import lombok.AllArgsConstructor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestFibonacciController {
@@ -52,6 +59,98 @@ public class TestFibonacciController {
         assertEquals(1, result.get(1));
         assertEquals(5, result.get(5));
         assertEquals(8, result.get(6));
+    }
 
+    @Test
+    public void testListAllNumbers_works_in_parallel() {
+        final FibonacciController fibonacciController = new FibonacciController();
+        final CountDownLatch startWorkLatch = new CountDownLatch(1);
+        final AtomicInteger sessionIdSeed = new AtomicInteger(0);
+        final List<Integer> createdSessionIds = new CopyOnWriteArrayList<>();
+        final int workerThreadCount = 10;
+        final int workerThreadTargetCallCount = 1000;
+        final CountDownLatch workDoneLatch = new CountDownLatch(workerThreadCount * workerThreadTargetCallCount);
+        final SessionCreator sessionCreator = new SessionCreator(
+                fibonacciController, createdSessionIds, sessionIdSeed, workDoneLatch
+        );
+        final Random randomNumberGenerator = new Random();
+        final NumbersReader numbersReader = new NumbersReader(
+                fibonacciController, createdSessionIds, randomNumberGenerator, workDoneLatch
+        );
+        final ErrorDetector errorDetector = new ErrorDetector();
+        IntStream.range(0, workerThreadCount).forEach(threadIndex -> new Thread(errorDetector.wrap(() -> {
+            awaitThreadStartWorkNotice(startWorkLatch);
+            IntStream.range(0, workerThreadTargetCallCount).forEach(sessionIndex -> sessionCreator.create());
+        })).start());
+        IntStream.range(0, workerThreadCount).forEach(threadIndex -> new Thread(errorDetector.wrap(() -> {
+            awaitThreadStartWorkNotice(startWorkLatch);
+            IntStream.range(0, workerThreadTargetCallCount).forEach(sessionIndex -> numbersReader.read());
+        })).start());
+
+        startWorkLatch.countDown();
+        assertDoesNotThrow(() -> workDoneLatch.await());
+        assertEquals(0, errorDetector.errorCount.get());
+    }
+
+    private static class ErrorDetector {
+        private final AtomicInteger errorCount = new AtomicInteger();
+
+        public Runnable wrap(Runnable runnable) {
+            return () -> {
+                try {
+                    runnable.run();
+                } catch (Exception e) {
+                    errorCount.incrementAndGet();
+                }
+            };
+        }
+    }
+
+    @AllArgsConstructor
+    private static class SessionCreator {
+        private FibonacciController fibonacciController;
+        private List<Integer> createdSessionIds;
+        private AtomicInteger sessionIdSeed;
+        final CountDownLatch workDoneLatch;
+
+        public void create() {
+            int sessionId = sessionIdSeed.incrementAndGet();
+            fibonacciController.createSession(String.valueOf(sessionId), 10);
+            createdSessionIds.add(sessionId);
+            workDoneLatch.countDown();
+        }
+    }
+
+    @AllArgsConstructor
+    private static class NumbersReader {
+        private FibonacciController fibonacciController;
+        private List<Integer> createdSessionIds;
+        private Random randomNumberGenerator;
+        final CountDownLatch workDoneLatch;
+
+        public void read() {
+            while (createdSessionIds.size() == 0) { sleepUnsafe(); }
+            final int currentlyCreatedSessionsCount = createdSessionIds.size();
+            final int sessionIdIndex = randomNumberGenerator.nextInt(currentlyCreatedSessionsCount);
+            final Integer sessionId = createdSessionIds.get(sessionIdIndex);
+            fibonacciController.listAllFibonacciNumbers(String.valueOf(sessionId));
+            workDoneLatch.countDown();
+        }
+    }
+
+    private static void sleepUnsafe() {
+        try {
+            Thread.sleep(10);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void awaitThreadStartWorkNotice(final CountDownLatch countDownLatch) {
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
