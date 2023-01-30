@@ -3,6 +3,7 @@ package com.sessions.controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @RestController
 public class FibonacciController {
@@ -11,7 +12,7 @@ public class FibonacciController {
     private Map<String, List<Integer>> fibonacciSequenceMap;
 
     public FibonacciController (){
-        this.fibonacciSequenceMap= new HashMap<>();
+        this.fibonacciSequenceMap= new ConcurrentHashMap<>();
     }
 
     @PostMapping("/session/{sessionId}/{size}")
