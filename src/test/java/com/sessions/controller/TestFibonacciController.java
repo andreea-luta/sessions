@@ -108,10 +108,10 @@ public class TestFibonacciController {
 
     @AllArgsConstructor
     private static class SessionCreator {
-        private FibonacciController fibonacciController;
-        private List<Integer> createdSessionIds;
-        private AtomicInteger sessionIdSeed;
-        final CountDownLatch workDoneLatch;
+        private final FibonacciController fibonacciController;
+        private final List<Integer> createdSessionIds;
+        private final AtomicInteger sessionIdSeed;
+        private final CountDownLatch workDoneLatch;
 
         public void create() {
             int sessionId = sessionIdSeed.incrementAndGet();
@@ -123,10 +123,10 @@ public class TestFibonacciController {
 
     @AllArgsConstructor
     private static class NumbersReader {
-        private FibonacciController fibonacciController;
-        private List<Integer> createdSessionIds;
-        private Random randomNumberGenerator;
-        final CountDownLatch workDoneLatch;
+        private final FibonacciController fibonacciController;
+        private final List<Integer> createdSessionIds;
+        private final Random randomNumberGenerator;
+        private final CountDownLatch workDoneLatch;
 
         public void read() {
             while (createdSessionIds.size() == 0) { sleepUnsafe(); }
